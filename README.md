@@ -6,7 +6,7 @@ A Windows soundboard for sending audio clips and your microphone into Discord, g
 
 ## Run the Windows app
 
-1. Open this repository's **Releases** page and download **`Perkons-0.1.0-portable.exe`** from the release assets. Choose the latest version when a newer one is available.
+1. Open the [Releases page](https://github.com/lazdinst/perkons/releases/latest) and download **`Perkons-0.1.0-portable.exe`** from the release assets. Choose the latest version when a newer one is available.
 2. Put the executable somewhere convenient, such as a folder under Documents.
 3. Double-click it to launch Pērkons. Create a Windows shortcut to it if you want quicker access.
 
@@ -81,7 +81,7 @@ Hotkeys work while the app is unfocused, as long as Pērkons remains open. Short
 Requires Windows 10/11 x64, Git, and Node.js **22.12+** (Node 22 LTS recommended).
 
 ```powershell
-git clone <this-repository-url>
+git clone https://github.com/lazdinst/perkons.git
 cd perkons
 npm.cmd ci
 npm.cmd run dev
