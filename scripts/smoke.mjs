@@ -1,0 +1,57 @@
+import { _electron as electron } from 'playwright';
+import assert from 'node:assert/strict';
+import { mkdir, rm } from 'node:fs/promises';
+import path from 'node:path';
+const profile = path.resolve('.cache/smoke-profile');
+await mkdir(profile, { recursive: true });
+const env = { ...process.env }; delete env.ELECTRON_RUN_AS_NODE; delete env.PERKONS_DEV;
+const executablePath = process.env.PERKONS_EXECUTABLE;
+const app = await electron.launch({ executablePath, args: [...(executablePath ? [] : ['.']), `--user-data-dir=${profile}`, '--use-fake-device-for-media-stream', '--use-fake-ui-for-media-stream'], env, timeout: 30000 });
+try {
+  const page = await app.firstWindow();
+  const errors = []; page.on('pageerror', e => errors.push(e.message));
+  await page.getByRole('heading', { name: 'Sound library.' }).waitFor();
+  await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].hide());
+  assert.equal(await page.evaluate(() => typeof window.require), 'undefined');
+  assert.equal(await page.evaluate(() => typeof window.perkons.setHotkeys), 'function');
+  assert.equal(await page.getByRole('button', { name: 'Connect output', exact: true }).isDisabled(), true);
+  // Real decoding and IndexedDB storage of a generated four-second WAV clip.
+  const rate = 16000, samples = rate * 4;
+  const wav = Buffer.alloc(44 + samples * 2);
+  wav.write('RIFF', 0); wav.writeUInt32LE(wav.length - 8, 4); wav.write('WAVEfmt ', 8);
+  wav.writeUInt32LE(16, 16); wav.writeUInt16LE(1, 20); wav.writeUInt16LE(1, 22);
+  wav.writeUInt32LE(rate, 24); wav.writeUInt32LE(rate * 2, 28); wav.writeUInt16LE(2, 32); wav.writeUInt16LE(16, 34);
+  wav.write('data', 36); wav.writeUInt32LE(samples * 2, 40);
+  // Silence keeps automated output tests quiet.
+  await page.getByLabel('Import audio files').setInputFiles({ name: 'Test thunder.wav', mimeType: 'audio/wav', buffer: wav });
+  await page.getByRole('button', { name: 'Play Test thunder', exact: true }).waitFor();
+  await page.getByLabel('Hotkey for Test thunder').selectOption('Control+Alt+1');
+  await page.waitForFunction(() => document.querySelector('select[aria-label="Hotkey for Test thunder"]').value === 'Control+Alt+1');
+  await page.reload();
+  await page.getByRole('button', { name: 'Play Test thunder', exact: true }).waitFor();
+  assert.equal(await page.getByLabel('Hotkey for Test thunder').inputValue(), 'Control+Alt+1');
+  await page.getByLabel('Search sounds').fill('not present');
+  await page.getByRole('heading', { name: 'No matching sounds' }).waitFor();
+  await page.getByLabel('Search sounds').fill('');
+  await page.getByRole('button', { name: 'Find devices', exact: true }).click();
+  await page.waitForFunction(() => document.querySelector('select[aria-label="Soundboard output"]').options.length > 1);
+  const device = await page.getByLabel('Soundboard output', { exact: true }).evaluate(select => select.options[1].value);
+  await page.getByLabel('Soundboard output', { exact: true }).selectOption(device);
+  await page.getByRole('button', { name: 'Connect output', exact: true }).click();
+  await page.getByRole('button', { name: 'Disconnect', exact: true }).waitFor();
+  await page.getByRole('button', { name: 'Play Test thunder', exact: true }).click();
+  await page.getByRole('button', { name: 'Stop Test thunder', exact: true }).waitFor();
+  await page.getByRole('button', { name: /Stop all/ }).click();
+  await page.getByRole('button', { name: 'Play Test thunder', exact: true }).waitFor();
+  await page.getByRole('slider', { name: 'Voice level', exact: true }).fill('0');
+  await page.getByRole('button', { name: '+ Include my mic', exact: true }).click();
+  await page.getByRole('button', { name: '● Mic included', exact: true }).waitFor();
+  await page.getByRole('button', { name: 'Disconnect', exact: true }).click();
+  assert.equal(await page.getByRole('button', { name: '+ Include my mic', exact: true }).isDisabled(), true);
+  await page.getByLabel('Remove Test thunder', { exact: true }).click();
+  await page.getByRole('heading', { name: 'Your next sound starts here.' }).waitFor();
+  await page.reload();
+  await page.getByRole('heading', { name: 'Your next sound starts here.' }).waitFor();
+  assert.deepEqual(errors, []);
+  console.log('PASS: sandbox bridge, clip import/decode, persistence, hotkeys, search, output routing, playback, stop-all, microphone mixing, disconnect, removal.');
+} finally { await app.close(); await rm(profile, { recursive: true, force: true }); }
